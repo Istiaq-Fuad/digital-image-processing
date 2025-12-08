@@ -2,7 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 
-image = cv2.imread("images/deer.jpg", cv2.IMREAD_GRAYSCALE)
+image = cv2.imread("images/sunflower.png", cv2.IMREAD_GRAYSCALE)
 
 
 edges1 = cv2.Canny(image, 50, 150)
@@ -24,5 +24,5 @@ for ax in axes.flat:
     ax.axis("off")
 
 plt.tight_layout()
-# plt.savefig("images/output/canny_edges_figure.png")
+plt.savefig("images/output/canny_edges_figure.png")
 plt.show()

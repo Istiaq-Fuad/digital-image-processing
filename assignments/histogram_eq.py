@@ -17,7 +17,7 @@ def histogram_equalization(img):
     return img_equalized
 
 
-img = cv2.imread("images/deer.jpg", cv2.IMREAD_GRAYSCALE)
+img = cv2.imread("images/human.jpg", cv2.IMREAD_GRAYSCALE)
 
 
 custom_eq = histogram_equalization(img)
@@ -60,5 +60,5 @@ axes[2, 1].hist(opencv_eq.flatten(), bins=256, range=[0, 256], color="gray")
 axes[2, 1].set_title("OpenCV Histogram")
 
 plt.tight_layout()
-plt.savefig("images/output/comparison_figure.png")
+# plt.savefig("images/output/comparison_figure.png")
 plt.show()
