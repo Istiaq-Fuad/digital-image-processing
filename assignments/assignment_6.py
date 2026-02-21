@@ -14,9 +14,9 @@ def conv2d(image, kernel, mode="same"):
 
     if mode == "same":
         pad_h = kh // 2
-        pad_w = kw // 2
+        pad_w = kw // 2      
         padded = np.pad(
-            image, ((pad_h, pad_h), (pad_w, pad_w)), mode="constant", constant_values=0
+            image, ((pad_h, pad_h), (pad_w, pad_w)),
         )
     elif mode == "valid":
         padded = image

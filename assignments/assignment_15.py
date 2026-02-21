@@ -1,240 +1,190 @@
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import cv2
-from numpy.fft import fft2, fftshift, ifftshift, ifft2
+
+# -----------------------------
+# Utility Functions
+# -----------------------------
+
+def adjust_contrast(img, mode="normal"):
+    img = img.astype(np.float32)
+
+    if mode == "low":
+        img = img * 0.5 + 60      # reduce contrast
+    elif mode == "high":
+        img = img * 1.5 - 40      # increase contrast
+
+    return np.clip(img, 0, 255).astype(np.uint8)
 
 
-def create_filter_grid(rows, cols):
-    center_r, center_c = rows // 2, cols // 2
-    c, r = np.meshgrid(np.arange(cols), np.arange(rows))
-    distance = np.sqrt((c - center_c) ** 2 + (r - center_r) ** 2)
-    return distance
+def fft2_image(img):
+    f = np.fft.fft2(img)
+    fshift = np.fft.fftshift(f)
+    return fshift
 
 
-def create_ideal_filter(shape, cutoff, filter_type="lp"):
-    distance = create_filter_grid(shape[0], shape[1])
-    if filter_type == "lp":
-        mask = distance <= cutoff
-    elif filter_type == "hp":
-        mask = distance > cutoff
-    elif filter_type == "bp":
-        cutoff_high = cutoff[1]
-        cutoff_low = cutoff[0]
-        mask = (distance >= cutoff_low) & (distance <= cutoff_high)
-    return mask.astype(float)
+def ifft2_image(fshift):
+    f_ishift = np.fft.ifftshift(fshift)
+    img_back = np.fft.ifft2(f_ishift)
+    img_back = np.abs(img_back)
+    return np.uint8(np.clip(img_back, 0, 255))
 
 
-def create_gaussian_filter(shape, cutoff, filter_type="lp"):
-    distance = create_filter_grid(shape[0], shape[1])
-    if filter_type == "lp":
-        mask = np.exp(-(distance**2) / (2 * cutoff**2))
-    elif filter_type == "hp":
-        mask = 1 - np.exp(-(distance**2) / (2 * cutoff**2))
-    elif filter_type == "bp":
-        cutoff_high = cutoff[1]
-        cutoff_low = cutoff[0]
-        lp_high = np.exp(-(distance**2) / (2 * cutoff_high**2))
-        lp_low = np.exp(-(distance**2) / (2 * cutoff_low**2))
-        mask = lp_high - lp_low
-    return mask
+def distance_matrix(shape):
+    rows, cols = shape
+    crow, ccol = rows // 2, cols // 2
+    y, x = np.ogrid[:rows, :cols]
+    D = np.sqrt((x - ccol)**2 + (y - crow)**2)
+    return D
 
 
-def create_butterworth_filter(shape, cutoff, order_n, filter_type="lp"):
-    distance = create_filter_grid(shape[0], shape[1])
-    distance = distance + 1e-6  # Avoid division by zero
-    if filter_type == "lp":
-        mask = 1 / (1 + (distance / cutoff) ** (2 * order_n))
-    elif filter_type == "hp":
-        mask = 1 / (1 + (cutoff / distance) ** (2 * order_n))
-    elif filter_type == "bp":
-        cutoff_high = cutoff[1]
-        cutoff_low = cutoff[0]
-        lp_high = 1 / (1 + (distance / cutoff_high) ** (2 * order_n))
-        lp_low = 1 / (1 + (distance / cutoff_low) ** (2 * order_n))
-        mask = lp_high - lp_low
-    return mask
+# -----------------------------
+# Ideal Filters
+# -----------------------------
+
+def ideal_lpf(shape, D0):
+    D = distance_matrix(shape)
+    H = np.zeros(shape)
+    H[D <= D0] = 1
+    return H
 
 
-def apply_frequency_filter(image, filter_mask):
-    f_transform = fft2(image)
-    f_transform_shifted = fftshift(f_transform)
-
-    f_transform_filtered = f_transform_shifted * filter_mask
-
-    f_transform_uncentered = ifftshift(f_transform_filtered)
-    img_filtered_complex = ifft2(f_transform_uncentered)
-
-    img_filtered = np.abs(img_filtered_complex)
-
-    img_filtered = (
-        255
-        * (img_filtered - np.min(img_filtered))
-        / (np.max(img_filtered) - np.min(img_filtered))
-    )
-
-    return img_filtered.astype(np.uint8)
+def ideal_hpf(shape, D0):
+    return 1 - ideal_lpf(shape, D0)
 
 
-img_path = "images/sunflower.png"
+def ideal_bpf(shape, D0, W):
+    D = distance_matrix(shape)
+    H = np.zeros(shape)
+    H[(D >= (D0 - W/2)) & (D <= (D0 + W/2))] = 1
+    return H
 
-img_normal = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
 
-min_val, max_val, _, _ = cv2.minMaxLoc(img_normal)
-target_min, target_max = 50, 150
-alpha = (target_max - target_min) / (max_val - min_val)
-beta = target_min - min_val * alpha
-img_low = cv2.convertScaleAbs(img_normal, alpha=alpha, beta=beta)
+# -----------------------------
+# Butterworth Filters
+# -----------------------------
 
-img_high = cv2.equalizeHist(img_normal)
+def butterworth_lpf(shape, D0, n):
+    D = distance_matrix(shape)
+    return 1 / (1 + (D / D0)**(2*n))
 
-images = {
+
+def butterworth_hpf(shape, D0, n):
+    return 1 - butterworth_lpf(shape, D0, n)
+
+
+def butterworth_bpf(shape, D0, W, n):
+    D = distance_matrix(shape)
+    return 1 / (1 + ((D*W)/(D**2 - D0**2 + 1e-5))**(2*n))
+
+
+# -----------------------------
+# Gaussian Filters
+# -----------------------------
+
+def gaussian_lpf(shape, D0):
+    D = distance_matrix(shape)
+    return np.exp(-(D**2) / (2*(D0**2)))
+
+
+def gaussian_hpf(shape, D0):
+    return 1 - gaussian_lpf(shape, D0)
+
+
+def gaussian_bpf(shape, D0, W):
+    D = distance_matrix(shape)
+    return np.exp(-((D**2 - D0**2)**2) / (D**2 * W**2 + 1e-5))
+
+
+# -----------------------------
+# Apply Filter in Frequency Domain
+# -----------------------------
+
+def apply_filter(img, H):
+    F = fft2_image(img)
+    G = F * H
+    result = ifft2_image(G)
+    return result
+
+
+# -----------------------------
+# Main Program
+# -----------------------------
+
+# Load grayscale image
+img = cv2.imread("image.jpg", 0)
+
+# Contrast versions
+img_low = adjust_contrast(img, "low")
+img_normal = adjust_contrast(img, "normal")
+img_high = adjust_contrast(img, "high")
+
+contrast_images = {
     "Low Contrast": img_low,
     "Normal Contrast": img_normal,
-    "High Contrast": img_high,
+    "High Contrast": img_high
 }
 
-CUTOFF_LP = 40
-CUTOFF_HP = 40
-CUTOFF_BP = (30, 60)
-BUTTERWORTH_N = 2
-IMG_SHAPE = img_normal.shape
+D0 = 40
+W = 20
+orders = [1, 2, 5]   # Different n values
 
-gauss_lp = create_gaussian_filter(IMG_SHAPE, CUTOFF_LP, "lp")
-gauss_hp = create_gaussian_filter(IMG_SHAPE, CUTOFF_HP, "hp")
-gauss_bp = create_gaussian_filter(IMG_SHAPE, CUTOFF_BP, "bp")
+for contrast_name, image in contrast_images.items():
 
-butter_lp = create_butterworth_filter(IMG_SHAPE, CUTOFF_LP, BUTTERWORTH_N, "lp")
-butter_hp = create_butterworth_filter(IMG_SHAPE, CUTOFF_HP, BUTTERWORTH_N, "hp")
-butter_bp = create_butterworth_filter(IMG_SHAPE, CUTOFF_BP, BUTTERWORTH_N, "bp")
+    plt.figure(figsize=(18, 12))
+    plt.suptitle(f"{contrast_name}", fontsize=16)
 
-ideal_lp = create_ideal_filter(IMG_SHAPE, CUTOFF_LP, "lp")
-ideal_hp = create_ideal_filter(IMG_SHAPE, CUTOFF_HP, "hp")
-ideal_bp = create_ideal_filter(IMG_SHAPE, CUTOFF_BP, "bp")
+    # Ideal Filters
+    ideal_lp = apply_filter(image, ideal_lpf(image.shape, D0))
+    ideal_hp = apply_filter(image, ideal_hpf(image.shape, D0))
+    ideal_bp = apply_filter(image, ideal_bpf(image.shape, D0, W))
 
-# Plot 1: Gaussian Filtering on Varying Contrast
-fig1, axes = plt.subplots(3, 4, figsize=(20, 15))
-fig1.suptitle(
-    "Figure 1: Application of Gaussian Filters on Varying Contrast Images",
-    fontsize=20,
-    y=1.02,
-)
+    # Gaussian Filters
+    gauss_lp = apply_filter(image, gaussian_lpf(image.shape, D0))
+    gauss_hp = apply_filter(image, gaussian_hpf(image.shape, D0))
+    gauss_bp = apply_filter(image, gaussian_bpf(image.shape, D0, W))
 
-for i, (name, img) in enumerate(images.items()):
-    axes[i, 0].imshow(img, cmap="gray")
-    axes[i, 0].set_title(f"Original ({name})", fontsize=12)
+    # Butterworth (for n=2 default comparison)
+    butter_lp = apply_filter(image, butterworth_lpf(image.shape, D0, 2))
+    butter_hp = apply_filter(image, butterworth_hpf(image.shape, D0, 2))
+    butter_bp = apply_filter(image, butterworth_bpf(image.shape, D0, W, 2))
 
-    filtered_lp = apply_frequency_filter(img, gauss_lp)
-    axes[i, 1].imshow(filtered_lp, cmap="gray")
-    axes[i, 1].set_title(f"Gaussian LPF (D0={CUTOFF_LP})", fontsize=12)
+    results = [
+        image,
+        ideal_lp, ideal_hp, ideal_bp,
+        butter_lp, butter_hp, butter_bp,
+        gauss_lp, gauss_hp, gauss_bp
+    ]
 
-    filtered_hp = apply_frequency_filter(img, gauss_hp)
-    axes[i, 2].imshow(filtered_hp, cmap="gray")
-    axes[i, 2].set_title(f"Gaussian HPF (D0={CUTOFF_HP})", fontsize=12)
+    titles = [
+        "Original",
+        "Ideal LPF", "Ideal HPF", "Ideal BPF",
+        "Butterworth LPF", "Butterworth HPF", "Butterworth BPF",
+        "Gaussian LPF", "Gaussian HPF", "Gaussian BPF"
+    ]
 
-    filtered_bp = apply_frequency_filter(img, gauss_bp)
-    axes[i, 3].imshow(filtered_bp, cmap="gray")
-    axes[i, 3].set_title(f"Gaussian BPF (D0={CUTOFF_BP})", fontsize=12)
+    for i in range(len(results)):
+        plt.subplot(3, 4, i+1)
+        plt.imshow(results[i], cmap="gray")
+        plt.title(titles[i])
+        plt.axis("off")
 
-for ax in axes.flat:
-    ax.axis("off")
+    plt.tight_layout()
+    plt.show()
 
-plt.tight_layout()
-plt.savefig("figure_1_gaussian_filtering.png")
-plt.show()
 
-# Plot 2: Butterworth Filtering on Varying Contrast
-fig2, axes = plt.subplots(3, 4, figsize=(20, 15))
-fig2.suptitle(
-    f"Figure 2: Application of Butterworth Filters (n={BUTTERWORTH_N}) on Varying Contrast",
-    fontsize=20,
-    y=1.02,
-)
+# -----------------------------
+# Effect of Different n (Butterworth)
+# -----------------------------
 
-for i, (name, img) in enumerate(images.items()):
-    axes[i, 0].imshow(img, cmap="gray")
-    axes[i, 0].set_title(f"Original ({name})", fontsize=12)
-
-    filtered_lp = apply_frequency_filter(img, butter_lp)
-    axes[i, 1].imshow(filtered_lp, cmap="gray")
-    axes[i, 1].set_title(f"Butterworth LPF (n={BUTTERWORTH_N})", fontsize=12)
-
-    filtered_hp = apply_frequency_filter(img, butter_hp)
-    axes[i, 2].imshow(filtered_hp, cmap="gray")
-    axes[i, 2].set_title(f"Butterworth HPF (n={BUTTERWORTH_N})", fontsize=12)
-
-    filtered_bp = apply_frequency_filter(img, butter_bp)
-    axes[i, 3].imshow(filtered_bp, cmap="gray")
-    axes[i, 3].set_title(f"Butterworth BPF (n={BUTTERWORTH_N})", fontsize=12)
-
-for ax in axes.flat:
-    ax.axis("off")
-
-plt.tight_layout()
-plt.savefig("figure_2_butterworth_filtering.png")
-plt.show()
-
-# Plot 3: Comparative Analysis (Ideal, Gaussian, Butterworth)
-fig3, axes = plt.subplots(3, 3, figsize=(15, 15))
-fig3.suptitle(
-    "Figure 3: Comparison of Ideal, Gaussian, and Butterworth (n=2) Filters",
-    fontsize=20,
-    y=1.02,
-)
-
-img_to_compare = images["Normal Contrast"]
-
-filters_to_compare = {
-    "Ideal": (ideal_lp, ideal_hp),
-    "Gaussian": (gauss_lp, gauss_hp),
-    "Butterworth (n=2)": (butter_lp, butter_hp),
-}
-
-for i, (name, (lp_mask, hp_mask)) in enumerate(filters_to_compare.items()):
-    axes[i, 0].imshow(img_to_compare, cmap="gray")
-    axes[i, 0].set_title(f"Original (for {name})", fontsize=12)
-
-    filtered_lp = apply_frequency_filter(img_to_compare, lp_mask)
-    axes[i, 1].imshow(filtered_lp, cmap="gray")
-    axes[i, 1].set_title(f"{name} LPF (D0={CUTOFF_LP})", fontsize=12)
-
-    filtered_hp = apply_frequency_filter(img_to_compare, hp_mask)
-    axes[i, 2].imshow(filtered_hp, cmap="gray")
-    axes[i, 2].set_title(f"{name} HPF (D0={CUTOFF_HP})", fontsize=12)
-
-for ax in axes.flat:
-    ax.axis("off")
-
-plt.tight_layout()
-plt.savefig("figure_3_filter_comparison.png")
-plt.show()
-
-# Plot 4: Effect of Order 'n' in Butterworth Filtering
-orders = [1, 2, 5, 10]
-fig4, axes = plt.subplots(len(orders), 3, figsize=(15, 20))
-fig4.suptitle(
-    "Figure 4: Effect of Varying Order 'n' on Butterworth Filtering",
-    fontsize=20,
-    y=1.01,
-)
+plt.figure(figsize=(15, 5))
+plt.suptitle("Effect of Different n in Butterworth LPF")
 
 for i, n in enumerate(orders):
-    b_lp = create_butterworth_filter(IMG_SHAPE, CUTOFF_LP, n, "lp")
-    b_hp = create_butterworth_filter(IMG_SHAPE, CUTOFF_HP, n, "hp")
+    butter_lp = apply_filter(img, butterworth_lpf(img.shape, D0, n))
+    plt.subplot(1, 3, i+1)
+    plt.imshow(butter_lp, cmap="gray")
+    plt.title(f"n = {n}")
+    plt.axis("off")
 
-    axes[i, 0].imshow(img_to_compare, cmap="gray")
-    axes[i, 0].set_title(f"Original (for n={n})", fontsize=12)
-
-    filtered_lp = apply_frequency_filter(img_to_compare, b_lp)
-    axes[i, 1].imshow(filtered_lp, cmap="gray")
-    axes[i, 1].set_title(f"Butterworth LPF (n={n})", fontsize=12)
-
-    filtered_hp = apply_frequency_filter(img_to_compare, b_hp)
-    axes[i, 2].imshow(filtered_hp, cmap="gray")
-    axes[i, 2].set_title(f"Butterworth HPF (n={n})", fontsize=12)
-
-for ax in axes.flat:
-    ax.axis("off")
-
-plt.tight_layout()
-plt.savefig("figure_4_butterworth_n_effect.png")
 plt.show()

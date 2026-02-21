@@ -1,78 +1,77 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.fftpack
 import pywt
 
+# -----------------------------------------
+# Load Image (Grayscale)
+# -----------------------------------------
+img = cv2.imread("../images/flower.jpg", cv2.IMREAD_GRAYSCALE)
+img = cv2.resize(img, (256, 256))
 
-def apply_dft(image):
-    f = np.fft.fft2(image)
-    fshift = np.fft.fftshift(f)
-    magnitude_spectrum = 20 * np.log(np.abs(fshift) + 1)
-    return magnitude_spectrum
+# -----------------------------------------
+# 1️⃣ DFT using NumPy
+# -----------------------------------------
+dft = np.fft.fft2(img)
+dft_shift = np.fft.fftshift(dft)
+dft_magnitude = np.log(1 + np.abs(dft_shift))
 
+# -----------------------------------------
+# 2️⃣ DCT using OpenCV
+# -----------------------------------------
+img_float = np.float32(img)   # Required for cv2.dct()
+dct_transformed = cv2.dct(img_float)
+dct_magnitude = np.log(1 + np.abs(dct_transformed))
 
-def apply_dct(image):
-    dct_rows = scipy.fftpack.dct(image, axis=0, norm="ortho")
-    dct_cols = scipy.fftpack.dct(dct_rows, axis=1, norm="ortho")
-    magnitude_spectrum = np.log(np.abs(dct_cols) + 1)
-    return magnitude_spectrum
+# -----------------------------------------
+# 3️⃣ DWT (Discrete Wavelet Transform)
+# -----------------------------------------
+coeffs2 = pywt.dwt2(img, 'haar')
+LL, (LH, HL, HH) = coeffs2
 
+LH_vis = np.abs(LH)
+HL_vis = np.abs(HL)
+HH_vis = np.abs(HH)
 
-def apply_dwt(image):
-    coeffs = pywt.dwt2(image, "haar")
-    LL, (LH, HL, HH) = coeffs
+# -----------------------------------------
+# Visualization
+# -----------------------------------------
+plt.figure(figsize=(16, 12))
 
-    def normalize(band):
-        band = np.log(np.abs(band) + 1)
-        return cv2.normalize(band, None, 0, 255, cv2.NORM_MINMAX)
+plt.subplot(3, 3, 1)
+plt.imshow(img, cmap='gray')
+plt.title("Original Image")
+plt.axis("off")
 
-    top_row = np.hstack((normalize(LL), normalize(HL)))
-    bot_row = np.hstack((normalize(LH), normalize(HH)))
-    dwt_viz = np.vstack((top_row, bot_row))
+plt.subplot(3, 3, 2)
+plt.imshow(dft_magnitude, cmap='gray')
+plt.title("DFT Magnitude Spectrum")
+plt.axis("off")
 
-    return dwt_viz
+plt.subplot(3, 3, 3)
+plt.imshow(dct_magnitude, cmap='gray')
+plt.title("DCT Coefficients (cv2)")
+plt.axis("off")
 
+plt.subplot(3, 3, 4)
+plt.imshow(LL, cmap='gray')
+plt.title("DWT - LL (Approximation)")
+plt.axis("off")
 
-img = cv2.imread("images/sunflower.png", 0)
+plt.subplot(3, 3, 5)
+plt.imshow(LH_vis, cmap='gray')
+plt.title("DWT - LH (Horizontal Details)")
+plt.axis("off")
 
-if img is None:
+plt.subplot(3, 3, 6)
+plt.imshow(HL_vis, cmap='gray')
+plt.title("DWT - HL (Vertical Details)")
+plt.axis("off")
 
-    img = np.zeros((256, 256), dtype=np.uint8)
-    img[::32, ::32] = 255
-    img[1::32, 1::32] = 255
-
-img_float = np.float32(img)
-
-
-dft_result = apply_dft(img_float)
-dct_result = apply_dct(img_float)
-dwt_result = apply_dwt(img_float)
-
-
-fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-plt.suptitle("Comparison of Image Transforms: DFT, DCT, and DWT", fontsize=16)
-
-
-axes[0, 0].imshow(img, cmap="gray")
-axes[0, 0].set_title("Original Grayscale Image")
-axes[0, 0].axis("off")
-
-
-axes[0, 1].imshow(dft_result, cmap="inferno")
-axes[0, 1].set_title("DFT Magnitude Spectrum\n(Centered Low Frequencies)")
-axes[0, 1].axis("off")
-
-
-axes[1, 0].imshow(dct_result, cmap="inferno")
-axes[1, 0].set_title("DCT Coefficients\n(Energy Compacted in Top-Left)")
-axes[1, 0].axis("off")
-
-
-axes[1, 1].imshow(dwt_result, cmap="gray")
-axes[1, 1].set_title("DWT (Haar) Decomposition\n(LL, HL, LH, HH)")
-axes[1, 1].axis("off")
+plt.subplot(3, 3, 7)
+plt.imshow(HH_vis, cmap='gray')
+plt.title("DWT - HH (Diagonal Details)")
+plt.axis("off")
 
 plt.tight_layout()
-plt.savefig("images/output/transforms_comparison.png")
-print("Comparison figure saved as 'transforms_comparison.png'")
+plt.show()

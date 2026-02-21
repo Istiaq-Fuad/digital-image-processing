@@ -19,7 +19,7 @@ def brightness_shift(image, b):
 
 def log_transform(image):
     c = 255 / np.log(1 + np.max(image))
-    log_image = c * np.log(1 + image.astype(np.float64))
+    log_image = c * np.log(1 + image.astype(np.float64))  # np.float64(image)
     return np.clip(log_image, 0, 255).astype(np.uint8)
 
 

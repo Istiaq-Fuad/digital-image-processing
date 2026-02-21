@@ -3,18 +3,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def histogram_equalization(img):
+def histogram_equalization(image):
+    hist = np.zeros(256)
 
-    hist, _ = np.histogram(img.flatten(), 256, [0, 256])
+    for i in image.flatten():
+        hist[i] += 1
 
-    cdf = hist.cumsum()
-    cdf_m = np.ma.masked_equal(cdf, 0)
+    hist = hist / image.size
 
-    cdf_m = (cdf_m - cdf_m.min()) * 255 / (cdf_m.max() - cdf_m.min())
-    cdf_final = np.ma.filled(cdf_m, 0).astype("uint8")
+    cdf = np.cumsum(hist)
 
-    img_equalized = cdf_final[img]
-    return img_equalized
+    new_values = np.round(cdf * 255).astype(np.uint8)
+
+    return new_values[image]
 
 
 img = cv2.imread("images/human.jpg", cv2.IMREAD_GRAYSCALE)

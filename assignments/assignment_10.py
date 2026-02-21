@@ -5,35 +5,37 @@ import matplotlib.pyplot as plt
 
 
 def custom_erode(img, kernel):
-    m, n = kernel.shape
-    pad_h, pad_w = m // 2, n // 2
-    padded = cv2.copyMakeBorder(
-        img, pad_h, pad_h, pad_w, pad_w, cv2.BORDER_CONSTANT, value=0
-    )
-    out = np.zeros_like(img)
+    k_height, k_width = kernel.shape
+    pad_h, pad_w = k_height // 2, k_width // 2
+    padded_img = np.pad(img, ((pad_h, pad_h), (pad_w, pad_w)))
+    eroded_img = np.zeros_like(img)
 
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            region = padded[i : i + m, j : j + n]
-            if np.array_equal(region[kernel == 1], np.ones(np.sum(kernel)) * 255):
-                out[i, j] = 255
-    return out
+    for i in range(eroded_img.shape[0]):
+        for j in range(eroded_img.shape[1]):
+            region = padded_img[i : i + k_height, j : j + k_width]
+            if np.all(region[kernel == 1] == 1):
+                eroded_img[i, j] = 1
+            else:
+                eroded_img[i, j] = 0
+
+    return eroded_img
 
 
 def custom_dilate(img, kernel):
-    m, n = kernel.shape
-    pad_h, pad_w = m // 2, n // 2
-    padded = cv2.copyMakeBorder(
-        img, pad_h, pad_h, pad_w, pad_w, cv2.BORDER_CONSTANT, value=0
-    )
-    out = np.zeros_like(img)
+    k_height, k_width = kernel.shape
+    pad_h, pad_w = k_height // 2, k_width // 2
+    padded_img = np.pad(img, ((pad_h, pad_h), (pad_w, pad_w)))
+    dilated_img = np.zeros_like(img)
 
-    for i in range(img.shape[0]):
-        for j in range(img.shape[1]):
-            region = padded[i : i + m, j : j + n]
-            if np.any(region[kernel == 1] == 255):
-                out[i, j] = 255
-    return out
+    for i in range(dilated_img.shape[0]):
+        for j in range(dilated_img.shape[1]):
+            region = padded_img[i : i + k_height, j : j + k_width]
+            if np.any(region[kernel == 1] == 1):
+                dilated_img[i, j] = 1
+            else:
+                dilated_img[i, j] = 0
+
+    return dilated_img
 
 
 def custom_open(img, kernel):

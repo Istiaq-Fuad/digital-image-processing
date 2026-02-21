@@ -16,43 +16,49 @@ def display_images(images, titles):
         plt.hist(img.ravel(), bins=256, range=(0, 256), color="black")
         plt.title(f"Histogram - {title}")
     plt.tight_layout()
-    # save image
-    plt.savefig("images/output/histogram_matching_figure.png")
+    # plt.savefig("images/output/histogram_matching_figure.png")
     plt.show()
 
 
-def histogram_matching_cdf(src, ref):
-    hist_src, _ = np.histogram(src.flatten(), 256, [0, 256])
-    hist_ref, _ = np.histogram(ref.flatten(), 256, [0, 256])
+def histogram_matching_cdf(source, reference):
+    src_hist, _ = np.histogram(source.flatten(), 256, [0, 256])
+    ref_hist, _ = np.histogram(reference.flatten(), 256, [0, 256])
 
-    cdf_src = hist_src.cumsum() / hist_src.sum()
-    cdf_ref = hist_ref.cumsum() / hist_ref.sum()
+    src_pdf = src_hist / np.sum(src_hist)
+    ref_pdf = ref_hist / np.sum(ref_hist)
 
-    lut = np.zeros(256, dtype=np.uint8)
-    for i in range(256):
-        lut[i] = np.argmin(np.abs(cdf_ref - cdf_src[i]))
+    src_cdf = np.cumsum(src_pdf)
+    ref_cdf = np.cumsum(ref_pdf)
 
-    return cv2.LUT(src, lut)
+    mapping = np.zeros(256, dtype=np.uint8)
+
+    for src_intensity in range(256):
+        diff = np.abs(ref_cdf - src_cdf[src_intensity])
+        mapping[src_intensity] = np.argmin(diff)
+
+    matched = mapping[source]
+
+    return matched
 
 
-def histogram_matching_spec(src, ref):
-    hist_src, _ = np.histogram(src.flatten(), 256, [0, 256])
-    hist_ref, _ = np.histogram(ref.flatten(), 256, [0, 256])
+def histogram_matching_interpolation(source, reference):
+    src_hist, _ = np.histogram(source.flatten(), 256, [0, 256])
+    ref_hist, _ = np.histogram(reference.flatten(), 256, [0, 256])
 
-    hist_src = hist_src / hist_src.sum()
-    hist_ref = hist_ref / hist_ref.sum()
+    src_pdf = src_hist / np.sum(src_hist)
+    ref_pdf = ref_hist / np.sum(ref_hist)
 
-    cdf_src = np.cumsum(hist_src)
-    cdf_ref = np.cumsum(hist_ref)
+    src_cdf = np.cumsum(src_pdf)
+    ref_cdf = np.cumsum(ref_pdf)
 
-    lut = np.zeros(256, dtype=np.uint8)
-    j = 0
-    for i in range(256):
-        while j < 255 and cdf_ref[j] < cdf_src[i]:
-            j += 1
-        lut[i] = j
+    src_values = np.arange(256)
+    ref_values = np.arange(256)
 
-    return cv2.LUT(src, lut)
+    interp_values = np.interp(src_cdf, ref_cdf, ref_values)
+
+    matched = interp_values[source].astype(np.uint8)
+
+    return matched
 
 
 def adjust_contrast(img, level="normal"):
@@ -70,13 +76,13 @@ def hist_corr(im1, im2):
     return np.corrcoef(h1, h2)[0, 1]
 
 
-image = cv2.imread("images/deer.jpg", cv2.IMREAD_GRAYSCALE)
+image = cv2.imread("../images/sunflower.png", cv2.IMREAD_GRAYSCALE)
 
 src_low = adjust_contrast(image, "low")
 ref_high = adjust_contrast(image, "high")
 
 res_cdf = histogram_matching_cdf(src_low, ref_high)
-res_spec = histogram_matching_spec(src_low, ref_high)
+res_spec = histogram_matching_interpolation(src_low, ref_high)
 
 display_images(
     [src_low, ref_high, res_cdf, res_spec],
